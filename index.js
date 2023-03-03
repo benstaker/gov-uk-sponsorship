@@ -9,14 +9,23 @@ var sourceExportPath = path.join(__dirname, 'export.csv');
 
 var stream = fs.createReadStream(sourceExportPath, 'UTF-8');
 
-var townCityFolderPath = path.join(__dirname, 'exports', 'towns-cities');
-var countyFolderPath = path.join(__dirname, 'exports', 'counties');
-var typeRatingFolderPath = path.join(__dirname, 'exports', 'types-and-ratings');
-var routeFolderPath = path.join(__dirname, 'exports', 'routes');
+var exportsFolderPath = path.join(__dirname, 'exports');
+fsExtra.ensureDirSync(exportsFolderPath);
 
+var townCityFolderPath = path.join(exportsFolderPath, 'towns-cities');
+fsExtra.ensureDirSync(townCityFolderPath);
 fsExtra.emptyDirSync(townCityFolderPath);
+
+var countyFolderPath = path.join(exportsFolderPath, 'counties');
+fsExtra.ensureDirSync(countyFolderPath);
 fsExtra.emptyDirSync(countyFolderPath);
+
+var typeRatingFolderPath = path.join(exportsFolderPath, 'types-and-ratings');
+fsExtra.ensureDirSync(typeRatingFolderPath);
 fsExtra.emptyDirSync(typeRatingFolderPath);
+
+var routeFolderPath = path.join(exportsFolderPath, 'routes');
+fsExtra.ensureDirSync(routeFolderPath);
 fsExtra.emptyDirSync(routeFolderPath);
 
 var headers = [

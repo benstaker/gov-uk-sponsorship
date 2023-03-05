@@ -5,6 +5,16 @@ var Papa = require('papaparse');
 var path = require('path');
 var XLSX = require('xlsx');
 
+var config = {
+  generateTownCity: true,
+  generateCounty: true,
+  generateTypeRating: true,
+  generateRoute: true,
+  bookType: 'xlsx',
+  extension: '.xlsx',
+  maxRowsPerFile: 500,
+};
+
 var sourceExportPath = path.join(__dirname, 'export.csv');
 
 var stream = fs.createReadStream(sourceExportPath, 'UTF-8');
@@ -13,114 +23,117 @@ var exportsFolderPath = path.join(__dirname, 'exports');
 fsExtra.ensureDirSync(exportsFolderPath);
 
 var townCityFolderPath = path.join(exportsFolderPath, 'towns-cities');
-fsExtra.ensureDirSync(townCityFolderPath);
-fsExtra.emptyDirSync(townCityFolderPath);
+if (config.generateTownCity) {
+  fsExtra.ensureDirSync(townCityFolderPath);
+  fsExtra.emptyDirSync(townCityFolderPath);
+}
 
 var countyFolderPath = path.join(exportsFolderPath, 'counties');
-fsExtra.ensureDirSync(countyFolderPath);
-fsExtra.emptyDirSync(countyFolderPath);
+if (config.generateCounty) {
+  fsExtra.ensureDirSync(countyFolderPath);
+  fsExtra.emptyDirSync(countyFolderPath);
+}
 
 var typeRatingFolderPath = path.join(exportsFolderPath, 'types-and-ratings');
-fsExtra.ensureDirSync(typeRatingFolderPath);
-fsExtra.emptyDirSync(typeRatingFolderPath);
+if (config.generateTypeRating) {
+  fsExtra.ensureDirSync(typeRatingFolderPath);
+  fsExtra.emptyDirSync(typeRatingFolderPath);
+}
 
 var routeFolderPath = path.join(exportsFolderPath, 'routes');
-fsExtra.ensureDirSync(routeFolderPath);
-fsExtra.emptyDirSync(routeFolderPath);
+if (config.generateRoute) {
+  fsExtra.ensureDirSync(routeFolderPath);
+  fsExtra.emptyDirSync(routeFolderPath);
+}
 
-var headers = [
-  'Organisation Name',
-  'Town / City',
-  'County',
-  'Type & Rating',
-  'Route',
-  'Google',
-  'Facebook',
-  'LinkedIn',
-  'Bing',
-  'Gov UK',
-];
+var sentenceCaseRegex = /(^\w{1}|\.\s*\w{1})/gi;
+
+var headers = ['Organisation Name', 'Town / City', 'County', 'Type & Rating', 'Route', 'Google', 'LinkedIn', 'Gov UK'];
 
 var townCityHash = {};
 var countyHash = {};
 var typeRatingHash = {};
 var routeHash = {};
 
-function processRow(data) {
-  var orgName = data['Organisation Name'];
-  var townCity = data['Town/City'];
-  var townCityKey = generateKey(townCity);
-  var county = data['County'];
-  var countyKey = generateKey(county);
-  var typeRating = data['Type & Rating'];
-  var typeRatingKey = generateKey(typeRating);
-  var route = data['Route'];
-  var routeKey = generateKey(route);
+function addRow(key, data, hash) {
+  var orgName = formatValue(data['Organisation Name']);
+  var encodedName = orgName ? encodeURIComponent(orgName) : '';
 
   var row = [
     orgName,
-    townCity,
-    county,
-    typeRating,
-    route,
-    'https://www.google.co.uk/search?q=' + encodeURIComponent(orgName),
-    'https://www.facebook.com/search/top?q=' + encodeURIComponent(orgName),
-    'https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(orgName),
-    'https://www.bing.com/search?q=' + encodeURIComponent(orgName),
-    'https://find-and-update.company-information.service.gov.uk/search?q=' + encodeURIComponent(orgName),
+    formatValue(data['Town/City']),
+    formatValue(data['County']),
+    formatValue(data['Type & Rating']),
+    formatValue(data['Route']),
+    encodedName ? 'https://www.google.co.uk/search?q=' + encodedName : encodedName,
+    encodedName ? 'https://www.linkedin.com/search/results/companies/?keywords=' + encodedName : encodedName,
+    encodedName ? 'https://find-and-update.company-information.service.gov.uk/search?q=' + encodedName : encodedName,
   ].reduce(function (result, value, index) {
     result[headers[index]] = value;
 
     return result;
   }, {});
 
-  if (!townCityHash.hasOwnProperty(townCityKey)) {
-    townCityHash[townCityKey] = [];
+  var allKey = key + 'All';
+  if (!hash.hasOwnProperty(allKey)) {
+    hash[allKey] = [];
   }
-  townCityHash[townCityKey].push(row);
+  hash[allKey].push(hash[allKey].length);
 
-  if (!countyHash.hasOwnProperty(countyKey)) {
-    countyHash[countyKey] = [];
+  var groupNumber = Math.ceil(hash[allKey].length / config.maxRowsPerFile);
+  var groupKey = groupNumber > 1 ? key + groupNumber.toString() : key;
+  if (!hash.hasOwnProperty(groupKey)) {
+    hash[groupKey] = [];
   }
-  countyHash[countyKey].push(row);
+  hash[groupKey].push(row);
+}
 
-  if (!typeRatingHash.hasOwnProperty(typeRatingKey)) {
-    typeRatingHash[typeRatingKey] = [];
+function sanitiseValue(text) {
+  if (!text) {
+    return '';
   }
-  typeRatingHash[typeRatingKey].push(row);
 
-  if (!routeHash.hasOwnProperty(routeKey)) {
-    routeHash[routeKey] = [];
-  }
-  routeHash[routeKey].push(row);
+  return text
+    .replace(/ {7}/g, ' ')
+    .replace(/ {6}/g, ' ')
+    .replace(/ {5}/g, ' ')
+    .replace(/ {4}/g, ' ')
+    .replace(/ {3}/g, ' ')
+    .replace(/ {2}/g, ' ')
+    .trim();
 }
 
 function generateKey(text) {
+  text = sanitiseValue(text);
+
   if (!text) {
     return 'unknown';
   }
 
-  return (
-    text
-      // To lower case
-      .toLowerCase()
-
-      // Only keep letters
-      .replace(/[^a-zA-Z0-9 ]/g, '')
-
-      // Trim
-      .replace(/ {5}/g, ' ')
-      .replace(/ {4}/g, ' ')
-      .replace(/ {3}/g, ' ')
-      .replace(/ {2}/g, ' ')
-      .trim()
-
-      // Replace spaces with underscores
-      .replace(/ /g, '_')
-  );
+  return text
+    .toLowerCase()
+    .replace(/\\&/g, ' and ')
+    .replace(/\//g, ' or ')
+    .replace(/[^A-Za-z0-9 ]/g, '')
+    .replace(/ /g, '_');
 }
 
-function attachLinksToXlsx(xlsxSheet) {
+function formatValue(text) {
+  text = sanitiseValue(text);
+
+  if (!text) {
+    return '';
+  }
+
+  return text
+    .replace(/[^A-Za-z0-9_\- ]/g, '')
+    .toLowerCase()
+    .replace(sentenceCaseRegex, function (firstLetter) {
+      return firstLetter.toUpperCase();
+    });
+}
+
+function attachLinks(xlsxSheet) {
   Object.keys(xlsxSheet.Sheets.Sheet1).forEach(function (key) {
     var column = key[0];
     var row = parseInt(key.substr(1));
@@ -129,7 +142,11 @@ function attachLinksToXlsx(xlsxSheet) {
       return;
     }
 
-    if (['f', 'g', 'h', 'i', 'j'].indexOf(column.toLowerCase()) !== -1) {
+    if (
+      ['f', 'g', 'h'].indexOf(column.toLowerCase()) !== -1 &&
+      xlsxSheet.Sheets.Sheet1[key].v &&
+      xlsxSheet.Sheets.Sheet1[key].v.indexOf('://') !== -1
+    ) {
       xlsxSheet.Sheets.Sheet1[key].l = { Target: xlsxSheet.Sheets.Sheet1[key].v };
     }
   });
@@ -140,7 +157,18 @@ Papa.parse(stream, {
   header: true,
 
   step: function (results, parser) {
-    processRow(results.data);
+    if (config.generateTownCity) {
+      addRow(generateKey(results.data['Town/City']), results.data, townCityHash);
+    }
+    if (config.generateCounty) {
+      addRow(generateKey(results.data['County']), results.data, countyHash);
+    }
+    if (config.generateTypeRating) {
+      addRow(generateKey(results.data['Type & Rating']), results.data, typeRatingHash);
+    }
+    if (config.generateRoute) {
+      addRow(generateKey(results.data['Route']), results.data, routeHash);
+    }
   },
 
   error: function () {
@@ -148,72 +176,96 @@ Papa.parse(stream, {
   },
 
   complete: function () {
-    Object.keys(townCityHash).forEach(function (key) {
-      var townCityXlsxFile = path.join(townCityFolderPath, key + '.xlsx');
+    if (config.generateTownCity) {
+      Object.keys(townCityHash).forEach(function (key) {
+        if (key.indexOf('All') !== -1) {
+          return;
+        }
 
-      fs.closeSync(fs.openSync(townCityXlsxFile, 'w'));
+        var townCityFile = path.join(townCityFolderPath, key + config.extension);
 
-      try {
-        var townCityCsv = json2csv({ data: townCityHash[key], fields: headers });
-        var townCityXlsx = XLSX.read(townCityCsv, { type: 'binary' });
+        fs.closeSync(fs.openSync(townCityFile, 'w'));
 
-        attachLinksToXlsx(townCityXlsx);
+        try {
+          var townCityCsv = json2csv({ data: townCityHash[key], fields: headers });
+          var townCityXlsx = XLSX.read(townCityCsv, { type: 'string' });
 
-        fs.appendFileSync(townCityXlsxFile, XLSX.write(townCityXlsx, { type: 'buffer', bookType: 'xlsx' }));
-      } catch (err) {
-        console.error(err);
-      }
-    });
+          attachLinks(townCityXlsx);
 
-    Object.keys(countyHash).forEach(function (key) {
-      var countyXlsxFile = path.join(countyFolderPath, key + '.xlsx');
+          XLSX.writeFile(townCityXlsx, townCityFile, { compression: false });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
 
-      fs.closeSync(fs.openSync(countyXlsxFile, 'w'));
+    if (config.generateCounty) {
+      Object.keys(countyHash).forEach(function (key) {
+        if (key.indexOf('All') !== -1) {
+          return;
+        }
 
-      try {
-        var countyCsv = json2csv({ data: countyHash[key], fields: headers });
-        var countyXlsx = XLSX.read(countyCsv, { type: 'binary' });
+        var countyFile = path.join(countyFolderPath, key + config.extension);
 
-        attachLinksToXlsx(countyXlsx);
+        fs.closeSync(fs.openSync(countyFile, 'w'));
 
-        fs.appendFileSync(countyXlsxFile, XLSX.write(countyXlsx, { type: 'buffer', bookType: 'xlsx' }));
-      } catch (err) {
-        console.error(err);
-      }
-    });
+        try {
+          var countyCsv = json2csv({ data: countyHash[key], fields: headers });
+          var countyXlsx = XLSX.read(countyCsv, { type: 'string' });
 
-    Object.keys(typeRatingHash).forEach(function (key) {
-      var typeRatingXlsxFile = path.join(typeRatingFolderPath, key + '.xlsx');
+          attachLinks(countyXlsx);
 
-      fs.closeSync(fs.openSync(typeRatingXlsxFile, 'w'));
+          XLSX.writeFile(countyXlsx, countyFile, { compression: false });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
 
-      try {
-        var typeRatingCsv = json2csv({ data: typeRatingHash[key], fields: headers });
-        var typeRatingXlsx = XLSX.read(typeRatingCsv, { type: 'binary' });
+    if (config.generateTypeRating) {
+      Object.keys(typeRatingHash).forEach(function (key) {
+        if (key.indexOf('All') !== -1) {
+          return;
+        }
 
-        attachLinksToXlsx(typeRatingXlsx);
+        var typeRatingFile = path.join(typeRatingFolderPath, key + config.extension);
 
-        fs.appendFileSync(typeRatingXlsxFile, XLSX.write(typeRatingXlsx, { type: 'buffer', bookType: 'xlsx' }));
-      } catch (err) {
-        console.error(err);
-      }
-    });
+        fs.closeSync(fs.openSync(typeRatingFile, 'w'));
 
-    Object.keys(routeHash).forEach(function (key) {
-      var routeXlsxFile = path.join(routeFolderPath, key + '.xlsx');
+        try {
+          var typeRatingCsv = json2csv({ data: typeRatingHash[key], fields: headers });
+          var typeRatingXlsx = XLSX.read(typeRatingCsv, { type: 'string' });
 
-      fs.closeSync(fs.openSync(routeXlsxFile, 'w'));
+          attachLinks(typeRatingXlsx);
 
-      try {
-        var routeCsv = json2csv({ data: routeHash[key], fields: headers });
-        var routeXlsx = XLSX.read(routeCsv, { type: 'binary' });
+          XLSX.writeFile(typeRatingXlsx, typeRatingFile, { compression: false });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
 
-        attachLinksToXlsx(routeXlsx);
+    if (config.generateRoute) {
+      Object.keys(routeHash).forEach(function (key) {
+        if (key.indexOf('All') !== -1) {
+          return;
+        }
 
-        fs.appendFileSync(routeXlsxFile, XLSX.write(routeXlsx, { type: 'buffer', bookType: 'xlsx' }));
-      } catch (err) {
-        console.error(err);
-      }
-    });
+        var routeFile = path.join(routeFolderPath, key + config.extension);
+
+        fs.closeSync(fs.openSync(routeFile, 'w'));
+
+        try {
+          var routeCsv = json2csv({ data: routeHash[key], fields: headers });
+          var routeXlsx = XLSX.read(routeCsv, { type: 'string' });
+
+          attachLinks(routeXlsx);
+
+          XLSX.writeFile(routeXlsx, routeFile, { compression: false });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
   },
 });
